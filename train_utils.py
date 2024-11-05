@@ -1,8 +1,11 @@
 import torch
+import matplotlib.pyplot as plt
+import numpy
+import pandas as pd
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
+train_cycle = 0
 def train_model(criterion, epoch, model, model_type, optimizer, train_iter, batch_size, clip_val, log_interval, scheduler=None):
     """
     Function to run training epoch
@@ -85,7 +88,7 @@ def train_model(criterion, epoch, model, model_type, optimizer, train_iter, batc
     return train_loss, train_acc, train_pred_loss
 
 
-def eval_model(criterion, model, model_type, val_iter, mode='Validation'):
+def eval_model(criterion, model, model_type, val_iter, epoch, mode='Validation'):
     """
     Function to run validation on given model
     :param criterion: loss function
@@ -99,6 +102,8 @@ def eval_model(criterion, model, model_type, val_iter, mode='Validation'):
     model.eval()
     loss_sum = 0
     correct_sum = 0
+    x = []
+    y = []
     with torch.no_grad():
         for data in val_iter:
             if len(data) == 2:
@@ -107,6 +112,21 @@ def eval_model(criterion, model, model_type, val_iter, mode='Validation'):
                 data = data.to(device)
 
             model_out = model(data)
+            for i in range(data.size(0)):
+                x_data = data[i].reshape(-1).cpu().numpy()
+                y_pred = model_out[i].reshape(-1).cpu().numpy()
+                if(len(x)==0):
+                    x = x_data
+                else:
+                    x= numpy.concatenate((x,x_data),axis=0)
+                if(len(y)==0):
+                    y = y_pred
+                else:
+                    y = numpy.concatenate((y,y_pred),axis=0)
+            
+            
+
+
             if model_type == 'LSTMAE_CLF':
                 model_out, out_labels = model_out
                 pred = out_labels.max(1, keepdim=True)[1]
@@ -126,6 +146,10 @@ def eval_model(criterion, model, model_type, val_iter, mode='Validation'):
                 loss = criterion(model_out, data)
 
             loss_sum += loss.item()
+    if(epoch % 500 == 0):
+
+        dfOverall = pd.DataFrame({"actual":x,"recon":y,"error":abs(x-y)})
+        dfOverall.to_csv("ReconData_"+str(epoch)+".csv")
     val_loss = loss_sum / len(val_iter.dataset)
     val_acc = round(correct_sum / len(val_iter.dataset) * 100, 2)
     acc_out_str = f'; Average Accuracy: {val_acc}' if model_type == 'LSTMAECLF' else ''
